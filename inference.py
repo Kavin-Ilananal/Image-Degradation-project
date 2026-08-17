@@ -21,7 +21,7 @@ import torch.nn.functional as F
 from model import build_model
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_CKPT = os.path.join(HERE, 'weights', 'rcan_phase1_psnr.pth')
+DEFAULT_CKPT = os.path.join(HERE, 'models', 'rcan_phase1_psnr.pth')
 SEED = 42
 
 try:
@@ -99,8 +99,8 @@ def main():
     ap.add_argument('--input_dir', required=True)
     ap.add_argument('--output_dir', required=True)
     ap.add_argument('--ckpt', default=DEFAULT_CKPT,
-                    help='default: weights/rcan_phase1_psnr.pth beside this script. '
-                         'Use weights/rcan_phase2_ssim.pth for the SSIM champion.')
+                    help='default: models/rcan_phase1_psnr.pth beside this script. '
+                         'Use models/rcan_phase2_ssim.pth for the SSIM champion.')
     ap.add_argument('--tta', action='store_true',
                     help='8-way test-time augmentation: ~+0.07 dB PSNR at 8x the '
                          'inference cost. OFF by default so the reported latency '
