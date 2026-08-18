@@ -59,39 +59,47 @@ incurred. Turn it on only if quality is scored and time is not.
 
 ## Results
 
-Measured on a **texture-cluster holdout**: images are described by a
-25-dimensional texture feature vector, grouped into 10 clusters with k-means,
-and clusters 2, 3 and 8 are withheld *entirely* from training. Validation
-therefore contains structurally unseen images, not merely unseen files.
+Measured on a **family-grouped holdout**. Every pair of images whose
+full-resolution ground truth correlates above 0.90 is joined by an edge; the
+connected components of that graph are "families"; whole families are assigned
+to one side of the split. Near-duplicate frames therefore cannot straddle it.
 
-**2585 train / 615 validation** (80.8 % / 19.2 %) from the 3200 released pairs.
-Verified at split time: no train/validation cluster overlap, no file overlap,
-all 3200 pairs accounted for.
+**2560 train / 640 validation** (80 % / 20 %) from the 3200 released pairs.
+Verified at split time: maximum train-to-validation correlation **0.8881** — zero
+pairs above 0.90, and by the same measurement zero above 0.95 or 0.98.
 
-| model | PSNR ↑ | SSIM ↑ |
+| model | PSNR (dB) | SSIM |
 |---|---|---|
-| **Phase 1 — PSNR champion, with TTA** | **29.79** | 0.6983 |
-| Phase 2 — SSIM champion, with TTA | 29.64 | **0.7032** |
-| Phase 1, single pass (best epoch) | 29.72 | 0.6954 |
-| Phase 2, single pass (best epoch) | 29.58 | 0.7021 |
+| Phase 1 — PSNR champion, with TTA | **28.24** | 0.7681 |
+| Phase 2 — SSIM champion, with TTA | 28.11 | **0.7686** |
+| Phase 1, single pass (best epoch) | 28.17 | — |
+| Phase 2, single pass (best epoch) | — | 0.7671 |
 
-Both checkpoints are shipped: the two training phases produce **different
-champions**, so the choice depends on which metric matters downstream.
+Both checkpoints ship. Phase 2 is the better all-round choice: it takes SSIM and
+gives up 0.14 dB of PSNR. Under an earlier, leakier split the two phases looked
+like genuinely different champions; they no longer do.
 
 ### Distribution — Phase 1 with TTA
 
-| | PSNR | SSIM |
+| | PSNR (dB) | SSIM |
 |---|---|---|
-| worst | 11.19 | 0.3101 |
-| p10 | 24.61 | 0.3091 |
-| **median** | **30.57** | **0.9144** |
-| p90 | 35.45 | 0.9418 |
-| best | 41.94 | 0.9579 |
+| worst | 11.70 | 0.3545 |
+| p10 | 22.86 | 0.7495 |
+| **median** | **28.17** | **0.8063** |
+| p90 | 34.70 | 0.9071 |
+| best | 41.97 | 0.9572 |
 
-Worst case `000958.npy`, best `003117.npy`. The full distribution is reported
+Worst case `002537.npy`, best `003117.npy`. The full distribution is reported
 rather than the mean alone: a high average with an 11 dB worst case is a
 different model from one with a 20 dB worst case, and for inspection the tail is
 what matters.
+
+### Robustness
+
+Across all 400 competition test images, single pass: **0 NaN or Inf, 0 blank
+frames**, every output inside [0.0000, 1.0000]. On 90 held-out crops drawn from
+unrelated imaging domains the model beats bicubic in **88 of 90** cases with no
+degenerate outputs.
 
 ---
 
@@ -149,7 +157,8 @@ Training stops on either trigger rather than at a fixed epoch count:
 - PSNR varies by less than 0.02 dB over 5 epochs
 - SSIM drops for 3 consecutive epochs
 
-Total: **84 epochs, ~2.6 h on 2 GPUs**, against a 150-epoch budget.
+Total: **98 epochs on 2 GPUs**, against a 150-epoch budget — 68 in phase 1
+plus the 30-epoch SSIM fine-tune, which ran to its full length.
 
 ---
 
@@ -161,8 +170,8 @@ inference.py            development entry point — flags, optional TTA
 train.py                reproduces training from scratch
 model.py                CascadedRCAN definition (run it to print the parameter count)
 models/
-  rcan_phase1_psnr.pth  PSNR champion — 29.79 dB   (default)
-  rcan_phase2_ssim.pth  SSIM champion — 0.7032
+  rcan_phase1_psnr.pth  PSNR champion — 28.24 dB   (default)
+  rcan_phase2_ssim.pth  SSIM champion — 0.7686
 results/restored_test/  model output for all 400 competition test images
 requirements.txt        pinned dependencies
 ```
@@ -171,21 +180,27 @@ requirements.txt        pinned dependencies
 
 ## Known limitations
 
-- **Inference cost is high.** All 54 RCABs run at full 128×128 resolution; the
-  network only upsamples at the very end, so there is no cheap low-resolution
-  stage. Measured at ~470 ms/image on CPU single-pass, and 8× that with TTA.
-  Reducing stage depth or downsampling inside the stages would cut this
-  substantially. **KLA benchmarks inference time as well as quality**, so this
-  should be measured on GPU and reported honestly.
-- **Worst case is 11.19 dB**, and SSIM at the 10th percentile is 0.3091 against a
-  0.9144 median — structural fidelity collapses on the hardest images.
+- **Inference cost.** All 54 RCABs run at full 128x128 resolution; the network
+  only upsamples at the very end, so there is no cheap low-resolution stage.
+  Measured at **30.7 ms/image on GPU** single-pass (12.3 s for the 400-image test
+  set); TTA multiplies that by 8. Reducing stage depth or downsampling inside the
+  stages is the lever if latency becomes binding.
+- **Worst case is 11.70 dB.** The 10th-percentile SSIM of 0.7495 against a 0.8063
+  median is far healthier than it looks at the mean, but the PSNR floor is still
+  low and a handful of images are restored poorly.
 - **TTA is reported but not shipped by default.** The headline scores use it;
   the default run does not. Quote whichever configuration matches the latency
   you report.
-- **Numbers are not comparable to other teams' cluster-holdout numbers** unless
-  the same split file is used. Which clusters you withhold materially changes the
-  score, so a "texture-cluster split" from a different feature set, a different
-  *k*, or a different choice of held-out clusters is a different exam.
+- **Validation is composed entirely of single-image families.** The split packs
+  families into train largest-first and sends the remainder to validation, so
+  every multi-image family ends up in training and the 640 validation images are
+  all structurally isolated. Measured, this makes them no harder than the rest of
+  the data (bicubic 23.01 dB vs 23.21 dB, p = 0.48), so the headline is not
+  distorted — but the model is never validated on the duplicate-rich subset.
+- **Numbers are not comparable to other teams' holdout numbers** unless the same
+  split file is used. The correlation threshold, the image the correlation is
+  computed on, and how families are packed all change which images end up in
+  validation, and therefore the score.
 
 ---
 
