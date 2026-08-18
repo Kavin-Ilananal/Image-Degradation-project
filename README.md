@@ -18,19 +18,32 @@ automatic termination**
 git clone https://github.com/Kavin-Ilananal/Image-Degradation-project.git
 cd Image-Degradation-project
 pip install -r requirements.txt
-python inference.py --input_dir <degraded_dir> --output_dir <restored_dir>
+python run.py <input-dir> <output-dir>
 ```
 
-No other arguments are required and no file needs editing. Default paths resolve
-relative to `inference.py` itself, so this runs from any working directory on a
-fresh clone. Weights are committed — no external download.
+**Positional arguments, no flags, no file editing.** The output directory is
+created if it does not exist. Every path resolves relative to `run.py` itself,
+so this runs from any working directory on a fresh clone. Runs on an NVIDIA GPU
+with no internet access, no API keys, no additional model downloads, no user
+interaction and no manual configuration — the weights ship in `models/`.
+
+`inference.py` remains available for development use (flags, optional TTA), but
+**`run.py` is the submission entry point**.
 
 Reads `.npy` (float32, any size), writes `.npy` at 2× resolution, float32 in
 [0, 1], one file per input with the same filename. Falls back to CPU with a
 warning if CUDA is absent.
 
-Verified over the full 400-image test set: **400/400 written, 0 non-finite,
-0 blank, all 256×256 float32 in [0.0000, 1.0000]**.
+Verified over the full 400-image test set:
+
+| check | result |
+|---|---|
+| one output per input, same filenames | 400 / 400 |
+| shape | all (256, 256) |
+| dtype | float32 |
+| values within [0, 1] | [0.0000, 1.0000] |
+| NaN or Inf | none |
+| blank frames | none |
 
 ### Optional test-time augmentation
 
@@ -143,10 +156,11 @@ Total: **84 epochs, ~2.6 h on 2 GPUs**, against a 150-epoch budget.
 ## Repository layout
 
 ```
-inference.py            EVALUATION ENTRY POINT — --input_dir / --output_dir, no edits needed
+run.py                  SUBMISSION ENTRY POINT — python run.py <input-dir> <output-dir>
+inference.py            development entry point — flags, optional TTA
 train.py                reproduces training from scratch
 model.py                CascadedRCAN definition (run it to print the parameter count)
-weights/
+models/
   rcan_phase1_psnr.pth  PSNR champion — 29.79 dB   (default)
   rcan_phase2_ssim.pth  SSIM champion — 0.7032
 results/restored_test/  model output for all 400 competition test images
